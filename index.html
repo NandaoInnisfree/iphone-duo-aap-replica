@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="enhanced">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPhone Duo — all-access-pass 媒体卡片画廊动画复刻</title>
+<style>
+/* ============================================================
+   复刻自 https://www.apple.com.cn/iphone-duo/
+   组件: section[1]/div[2]/div[1]/div
+         .all-access-pass.aap-media-card-gallery(.activated .aap-intro-complete)
+   动画: Web-Animations-free 弹簧物理(SpringLayer) intro 编舞 +
+         定时自动播放画廊(TimeGroup) + easeInOutQuad 卡片滑动
+   所有曲线/时序参数均从 overview.built.css / main.built.js 逆向提取
+   ============================================================ */
+
+:root{
+  --global-section-padding: 130px;
+  --global-section-padding-top-reduced: 120px;
+  --global-section-aap-padding: 224px;          /* ≤1068:176px  ≤734:144px */
+  --aap-stagger-fast: 50;
+  --aap-min-height: 56px;
+  --aap-blur: 7px;
+  --aap-margin: 32px;                            /* ≤734:20px */
+  --aap-top-margin-large: 380px;
+  --aap-top-margin-medium: 340px;
+  --aap-top-margin-small: 340px;
+  --aap-bubble-gap: 16px;
+  /* theme-dark */
+  --aap-background-color-alpha: 0.28;
+  --aap-background-color-solid: 42 42 45;
+  --aap-inner-glow-color: rgba(232,232,237,0.11);
+  --aap-text-color: rgb(245,245,247);
+  --aap-accent-color: rgb(0,113,227);
+  --aap-button-hover: rgba(73,73,76,0.726);
+  --aap-button-active: rgba(57,57,60,0.742);
+  --aap-icon-color: rgb(245,245,247);
+  --aap-active-fill-color: rgb(245,245,247);
+  --aap-inactive-fill-color: #767677;
+  /* dotnav (sk) */
+  --sk-dotnav-size: 8px;
+  --sk-dotnav-margin-block: 8px;
+  --sk-dotnav-margin-inline: 8px;
+  --sk-dotnav-background: rgba(255,255,255,0.36);
+  --sk-dotnav-background-hover: rgba(255,255,255,0.48);
+  /* 画廊 */
+  --autoplay-persist-duration: 6.15s;
+  --autoplay-progress: 0;
+  --shared-media-gallery-transition-duration: 1s;   /* JS 侧滑动时长 */
+  --gutter: max(22px, calc((100vw - 1080px) / 2));
+  --card-w: min(1080px, calc(100vw - 2 * var(--gutter)));
+}
+@media (max-width:1068px){ :root{ --global-section-padding-top-reduced:80px; --global-section-aap-padding:176px; --aap-top-margin-large:340px; } }
+@media (max-width:734px){
+  :root{ --global-section-padding-top-reduced:56px; --global-section-aap-padding:144px; --aap-margin:20px; --card-w: calc(100vw - 40px); }
+}
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+html{ scroll-behavior:auto; }
+body{
+  background:#000; color:#f5f5f7;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","SF Pro Text","PingFang SC","Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- 页面骨架（模拟原页面上下文） ---------- */
+.hero{
+  height: 220vh; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:18px;
+}
+.hero h1{ font-size:56px; font-weight:700; letter-spacing:-0.02em; }
+.hero p{ font-size:24px; color:#86868b; }
+.hero .hint{ position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  font-size:13px; color:#6e6e73; letter-spacing:.02em; z-index:9; }
+
+.section{ padding-top:var(--global-section-padding); padding-bottom:var(--global-section-aap-padding); position:relative; }
+.section-header{ max-width:1080px; margin:0 auto; padding:0 var(--gutter) 44px; }
+.section-header h2{ font-size:48px; font-weight:700; letter-spacing:-0.015em; line-height:1.08; }
+
+.after{ height:160vh; display:flex; align-items:center; justify-content:center; color:#6e6e73; font-size:20px; }
+
+/* ============================================================
+   媒体卡片画廊 + all-access-pass
+   ============================================================ */
+.media-card-set{
+  --progress-bar-active-width: 48px;    /* ≤734:32px */
+  position:relative;
+}
+@media (max-width:734px){ .media-card-set{ --progress-bar-active-width:32px; } }
+
+/* ---------- AAP 粘性控制条 ---------- */
+.all-access-pass__container{
+  /* 向下延伸至版块 AAP 底部留白：y=180 下沉 translate 与 sticky 行程不再被 overflow:clip 裁切 */
+  align-items:flex-end; display:flex; height:calc(100% + var(--global-section-aap-padding)); justify-content:center;
+  left:0; margin:0; overflow:clip; pointer-events:none; position:absolute;
+  top:0; width:100%;
+}
+.all-access-pass{
+  --aap-top-margin: var(--aap-top-margin-large);
+  align-items:center; bottom:var(--aap-margin); display:flex;
+  margin-top:var(--aap-top-margin); pointer-events:auto; position:sticky;
+  will-change:transform; z-index:1;
+}
+@media (max-width:1068px){ .all-access-pass{ --aap-top-margin:var(--aap-top-margin-medium); } }
+@media (max-width:734px){ .all-access-pass{ --aap-top-margin:var(--aap-top-margin-small); } }
+.all-access-pass.aap-intro-complete{ will-change:unset; }
+
+.all-access-pass__element{
+  --alpha:1;
+  background-color:rgba(0,0,0,0); border-radius:28px; color:var(--aap-text-color);
+  display:flex; opacity:0; position:relative;
+}
+.activated .all-access-pass__element{ opacity:1; }
+
+.all-access-pass__background{
+  --scale:1;
+  align-self:center;
+  backdrop-filter:blur(calc(var(--aap-blur) * (2 - var(--alpha))));
+  background-color:rgba(var(--aap-background-color-solid) / calc(1 - var(--alpha) * var(--aap-background-color-alpha)));
+  border-radius:28px; height:var(--aap-min-height); justify-self:center; left:50%;
+  opacity:0; position:absolute; top:50%;
+  transform:translate(-50%,-50%) scale(var(--scale));
+  width:var(--aap-min-height); will-change:transform; z-index:-1;
+}
+.activated .all-access-pass__background{ opacity:1; }
+.aap-intro-complete .all-access-pass__background{ will-change:unset; }
+
+.all-access-pass__intro-element{
+  border-radius:var(--aap-min-height);
+  background-color:rgb(var(--aap-background-color-solid));
+  box-sizing:border-box; height:var(--aap-min-height); left:50%;
+  opacity:0; position:absolute; top:0;
+  transform:translateX(-50%) scale(0.01);
+  width:var(--aap-min-height);
+}
+
+/* ---------- 定时 dotnav 气泡 ---------- */
+.aap-media-card-gallery__timed-dotnav{ --progress-intro:1; }
+
+html.enhanced .aap-media-card-gallery__dotnav-item{ opacity:0; transform:scale(0.5); }
+html.enhanced .activated .aap-media-card-gallery__dotnav-item{
+  opacity:1; transform:scale(1);
+  transition:opacity var(--dotnav-opacity-duration) ease-in var(--dotnav-opacity-delay);
+}
+.aap-media-card-gallery{ --dotnav-opacity-delay:740ms; --dotnav-opacity-duration:100ms; }
+
+/* ---------- 播放/暂停按钮气泡 ---------- */
+.aap-media-card-gallery__button{ --animation-offset:calc(var(--item-index) + 1); }
+html.enhanced .aap-media-card-gallery__button{ opacity:0; transform:scale(0.5); }
+html.enhanced .activated .aap-media-card-gallery__button{
+  opacity:1; transform:scale(1);
+  transition:
+    background-color linear 100ms,
+    opacity var(--playpause-opacity-duration) ease-in var(--playpause-opacity-delay),
+    transform var(--playpause-scale-duration) ease-out var(--playpause-scale-delay);
+}
+.aap-media-card-gallery{ --playpause-opacity-delay:940ms; --playpause-opacity-duration:100ms;
+  --playpause-scale-delay:940ms; --playpause-scale-duration:200ms; }
+
+.aap-media-card-gallery .play-pause-button-wrapper{
+  order:2; height:var(--aap-min-height); width:var(--aap-min-height);
+  margin-inline-start:var(--aap-bubble-gap);
+}
+.aap-media-card-gallery .play-pause-button-wrapper .play-pause-button{
+  height:100%; width:100%; pointer-events:all; display:flex; justify-content:center;
+  align-items:center; border-radius:32px; border:0; background:transparent; cursor:pointer;
+}
+.aap-media-card-gallery .play-pause-button-wrapper .play-pause-button .svg-icon{
+  height:100%; width:100%; display:none; fill:var(--aap-icon-color);
+  transition:fill linear 250ms;
+}
+.aap-media-card-gallery .play-pause-button-wrapper .play-pause-button:hover{ background-color:var(--aap-button-hover); }
+.aap-media-card-gallery .play-pause-button-wrapper .play-pause-button:active{ background-color:var(--aap-button-active); }
+.playing  .play-pause-button .svg-icon.pause-icon{ display:block; }
+.paused   .play-pause-button .svg-icon.play-icon{ display:block; }
+.ended    .play-pause-button .svg-icon.replay-icon{ display:block; }
+
+/* ---------- dotnav 轨道 ---------- */
+.aap-media-card-gallery .all-access-pass__element{
+  align-items:center; box-sizing:border-box; display:flex; justify-content:space-between;
+  min-height:var(--aap-min-height); pointer-events:auto; position:relative;
+}
+.aap-media-card-gallery .all-access-pass__element .dotnav{
+  display:flex; justify-content:center; align-items:center; line-height:0; padding:0 16px;
+}
+.dotnav-items{
+  margin:0; list-style:none; display:flex; align-items:center;
+  --dotnav-count:0;
+  --dot-width-total:calc((var(--dotnav-count) - 1) * var(--sk-dotnav-size) * 3);
+  --progress-width-total:calc(var(--progress-bar-active-width) * var(--progress-intro) + var(--sk-dotnav-size) * 2);
+  min-width:calc(var(--dot-width-total) + var(--progress-width-total));
+}
+.dotnav-item{ --item-index:0; margin-inline:var(--sk-dotnav-margin-inline); width:auto; }
+.dotnav-link{
+  --item-progress:calc(var(--item-index) - var(--autoplay-progress));
+  --abs-item-progress:max(var(--item-progress), -1 * var(--item-progress));
+  --item-expand-amount:min((1 - var(--abs-item-progress)), 1);
+  --progress-bar-delta-width:calc(var(--progress-bar-active-width) - var(--sk-dotnav-size));
+  background-color:var(--sk-dotnav-background); border-radius:10px; position:relative;
+  cursor:pointer; display:flex; justify-content:center; align-items:center; padding:0;
+  height:var(--sk-dotnav-size);
+  width:var(--sk-dotnav-size);          /* 基础圆点宽度：min-width 塌缩到 0 时兜底（与原站一致） */
+  max-width:var(--progress-bar-active-width);
+  min-width:calc(var(--progress-bar-delta-width) * var(--item-expand-amount) * var(--progress-intro) + var(--sk-dotnav-size));
+  transition:background-color linear 250ms;
+  text-decoration:none; outline:none;
+}
+.dotnav-link:focus-visible{ outline:2px solid #0071e3; outline-offset:3px; }
+.dotnav-link.current{ overflow:hidden; cursor:default; background-color:var(--sk-dotnav-background); }
+.dotnav-link:hover:not(.current){ background-color:var(--sk-dotnav-background-hover); }
+
+/* 进度条填充：6.15s 线性，playing 时运行（与原站一致） */
+.dotnav-link.current::after{
+  content:""; width:0; height:100%; min-width:15%; margin-inline-start:-15%;
+  border-radius:10px; background-color:var(--aap-active-fill-color);
+  position:absolute; top:0; inset-inline-start:0;
+  animation-name:aap-animate-progress;
+  animation-duration:var(--autoplay-persist-duration);
+  animation-timing-function:linear;
+  animation-play-state:paused;
+  animation-fill-mode:forwards;
+  transition:background-color linear 250ms;
+}
+@keyframes aap-animate-progress{ from{ width:0 } to{ width:115% } }
+.playing .dotnav .dotnav-items .dotnav-item .dotnav-link.current::after{ animation-play-state:running; }
+
+.visuallyhidden{
+  position:absolute; clip:rect(1px 1px 1px 1px); clip-path:inset(50%); width:1px; height:1px;
+  overflow:hidden; white-space:nowrap;
+}
+
+/* ---------- 横向卡片画廊 ---------- */
+.media-gallery-wrapper{ position:relative; }
+.media-card-set .scroll-container{
+  position:relative; overflow-x:scroll; overflow-y:hidden;
+  scroll-snap-type:x mandatory; scrollbar-width:none;
+  padding-bottom:30px; margin-bottom:-30px;
+}
+.media-card-set .scroll-container::-webkit-scrollbar{ display:none; }
+.media-card-set .item-container{
+  display:grid; grid-auto-flow:column; grid-gap:20px;
+  width:-moz-fit-content; width:fit-content;
+  padding:0 max(calc((100vw - var(--card-w)) / 2), 22px);
+  list-style-type:none;
+}
+.media-card-set .gallery-item{
+  display:flex; width:var(--card-w);
+  scroll-snap-align:center; list-style-type:none;
+}
+.card{
+  width:100%; position:relative; border-radius:28px; overflow:hidden;
+  background:#101013; min-height:600px;
+}
+@media (max-width:734px){ .card{ min-height:480px; } }
+.card img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.caption-container{
+  position:absolute; top:0; left:0; right:0; z-index:2; display:flex; justify-content:center;
+  pointer-events:none;
+}
+.caption{
+  margin-top:52px; font-size:32px; font-weight:600; letter-spacing:-0.01em; line-height:1.18;
+  text-align:center; max-width:82%; color:#f5f5f7;
+  text-shadow:0 1px 24px rgba(0,0,0,0.45);
+}
+@media (max-width:734px){ .caption{ font-size:22px; margin-top:34px; } }
+
+/* ---------- 状态类 ---------- */
+.gallery-item{ transition:none; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>iPhone&nbsp;Duo</h1>
+  <p>迄今最大 iPhone 显示屏，既有纤薄一面，又能折叠多变。</p>
+  <div class="hint">向下滚动 — 进入「走进 iPhone Duo 的世界」版块触发 all-access-pass 动画</div>
+</div>
+
+<section id="highlights" class="section">
+  <header class="section-header">
+    <h2>走进 iPhone&nbsp;Duo 的世界。</h2>
+  </header>
+
+  <div class="media-card-gallery-content media-card-set paused" id="highlights-gallery">
+    <!-- ====== all-access-pass 控制条（复刻目标组件） ====== -->
+    <div class="all-access-pass__container">
+      <div class="all-access-pass inactive aap-media-card-gallery" id="aap-media-card-gallery">
+        <div class="all-access-pass__intro-element" aria-hidden="true"></div>
+
+        <div class="all-access-pass__element play-pause-button-wrapper">
+          <span class="all-access-pass__background"></span>
+          <button class="play-pause-button all-access-pass__play-pause-button aap-media-card-gallery__button"
+                  aria-label="播放重点功能图库" id="mcg-play-pause">
+            <span class="icons">
+              <svg class="icon-control svg-icon play-icon" viewBox="0 0 56 56" aria-hidden="true">
+                <path d="m23.7555 36.6237c.4478 0 .8598-.1343 1.4241-.4568l10.9178-6.3322c.8598-.5016 1.3614-1.021 1.3614-1.8361 0-.8061-.5016-1.3255-1.3614-1.8271l-10.9178-6.3322c-.5643-.3314-.9762-.4657-1.4241-.4657-.9315 0-1.7555.7165-1.7555 1.9435v13.3629c0 1.227.824 1.9435 1.7555 1.9435z"></path>
+              </svg>
+              <svg class="icon-control svg-icon pause-icon" viewBox="0 0 56 56" aria-hidden="true">
+                <path d="m21.7334 36.67h2.5342c1.1483 0 1.7324-.5796 1.7324-1.7193v-13.9015c0-1.12-.5841-1.6898-1.7324-1.7193h-2.5342c-1.1483 0-1.7324.5698-1.7324 1.7193v13.9015c-.0297 1.1396.5544 1.7193 1.7324 1.7193zm9.9992 0h2.5347c1.1485 0 1.7327-.5796 1.7327-1.7193v-13.9015c0-1.12-.5842-1.7193-1.7327-1.7193h-2.5347c-1.1485 0-1.7327.5698-1.7327 1.7193v13.9015c.0297 1.1396.5545 1.7193 1.7327 1.7193z"></path>
+              </svg>
+              <svg class="icon-control svg-icon replay-icon" viewBox="0 0 56 56" aria-hidden="true">
+                <path d="m36.2448 26.6447c-1.1073 0-2.0052.8978-2.0052 2.0052 0 3.4405-2.7992 6.2397-6.2397 6.2397s-6.2397-2.7992-6.2397-6.2397 2.7992-6.2397 6.2397-6.2397c.0283 0 .0546-.0072.0825-.0083l-1.2839 1.2841c-.7833.7828-.7833 2.0526 0 2.8354.3911.3916.9047.5874 1.4177.5874s1.0266-.1958 1.4177-.5874l4.4406-4.4406c.7833-.7828.7833-2.0526 0-2.8354l-4.657-4.657c-.7823-.7833-2.0531-.7833-2.8354 0-.7833.7828-.7833 2.0526 0 2.8354l.9973.9974c-5.4561.223-9.8295 4.7189-9.8295 10.2287 0 5.6517 4.5983 10.25 10.25 10.25s10.25-4.5983 10.25-10.25c0-1.1073-.8978-2.0052-2.0052-2.0052z"></path>
+              </svg>
+            </span>
+          </button>
+        </div>
+
+        <div class="all-access-pass__element aap-media-card-gallery__timed-dotnav">
+          <span class="all-access-pass__background"></span>
+          <div class="tablist-wrapper">
+            <div class="dotnav">
+              <ul role="tablist" aria-label="重点功能选项卡列表" class="dotnav-items" id="mcg-dotnav" style="--dotnav-count: 6">
+                <li role="presentation" class="dotnav-item current aap-media-card-gallery__dotnav-item" style="--item-index: 0"><a class="dotnav-link current" href="#"><span class="visuallyhidden">显示屏</span></a></li>
+                <li role="presentation" class="dotnav-item aap-media-card-gallery__dotnav-item" style="--item-index: 1"><a class="dotnav-link" href="#"><span class="visuallyhidden">iOS</span></a></li>
+                <li role="presentation" class="dotnav-item aap-media-card-gallery__dotnav-item" style="--item-index: 2"><a class="dotnav-link" href="#"><span class="visuallyhidden">钛金属边框</span></a></li>
+                <li role="presentation" class="dotnav-item aap-media-card-gallery__dotnav-item" style="--item-index: 3"><a class="dotnav-link" href="#"><span class="visuallyhidden">4800 万像素融合式双摄系统</span></a></li>
+                <li role="presentation" class="dotnav-item aap-media-card-gallery__dotnav-item" style="--item-index: 4"><a class="dotnav-link" href="#"><span class="visuallyhidden">A20 Pro 芯片</span></a></li>
+                <li role="presentation" class="dotnav-item aap-media-card-gallery__dotnav-item" style="--item-index: 5"><a class="dotnav-link" href="#"><span class="visuallyhidden">电池</span></a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== 横向卡片画廊 ====== -->
+    <div class="media-gallery-wrapper">
+      <div class="gallery media-gallery scroll-container" id="mcg-scroller" tabindex="0">
+        <ul class="card-set item-container" id="mcg-items">
+          <li class="gallery-item" data-index="0"><div class="card">
+            <img src="https://www.apple.com.cn/iphone-duo/images/overview/highlights/display__bx48n0ntsgvm_large_2x.webp" alt="">
+            <div class="caption-container"><p class="caption">迄今最大 iPhone 显示屏，既有纤薄一面，又能折叠多变。</p></div>
+          </div></li>
+          <li class="gallery-item" data-index="1"><div class="card">
+            <img src="https://www.apple.com.cn/iphone-duo/images/overview/highlights/ios__dt9ns9weq4gi_large_2x.webp" alt="">
+            <div class="caption-container"><p class="caption">iPhone 叠加更多妙用，iOS 也重塑新体验。这位多面手，灵动表现独一份。</p></div>
+          </div></li>
+          <li class="gallery-item" data-index="2"><div class="card">
+            <img src="https://www.apple.com.cn/v/iphone-duo/e/images/overview/highlights/highlights_durability_endframe__e2gc60lhc5me_large_2x.jpg" alt="">
+            <div class="caption-container"><p class="caption">边框和铰链护壳均由钛金属打造，高颜值与坚固度缺一不可。</p></div>
+          </div></li>
+          <li class="gallery-item" data-index="3"><div class="card">
+            <img src="https://www.apple.com.cn/v/iphone-duo/e/images/overview/highlights/camera__bbxzc8mkt6g2_large_2x.jpg" alt="">
+            <div class="caption-container"><p class="caption">4800 万像素融合式双摄系统就位，拍摄新招上手，前后都上镜。</p></div>
+          </div></li>
+          <li class="gallery-item" data-index="4"><div class="card">
+            <img src="https://www.apple.com.cn/v/iphone-duo/e/images/overview/highlights/highlights_chip_endframe__eckq8spbb2mq_large_2x.jpg" alt="">
+            <div class="caption-container"><p class="caption">A20 Pro 采用 2 纳米制程，配合蒸发冷却技术，释放 Pro 级性能表现。</p></div>
+          </div></li>
+          <li class="gallery-item" data-index="5"><div class="card">
+            <img src="https://www.apple.com.cn/v/iphone-duo/e/images/overview/highlights/highlights_battery_endframe__lj0gaudp97em_large_2x.jpg" alt="">
+            <div class="caption-container"><p class="caption">双电池系统，源源电力全天挺你。</p></div>
+          </div></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="after">后续页面内容…</div>
+
+<script>
+/* ============================================================
+   1. SpringLayer —— 从 main.built.js 模块 oDN9vwoy+x3PdafW4QBc 逐行移植
+      · 固定 1/60s 时间步长（上限 1/30），半隐式欧拉积分
+      · 渲染插值（余量在两步间线性混合）
+      · 收敛阈值 0.001（位移与速度同时小于才判定到位）
+      · duration/bounce 型弹簧换算: k=(2π/d)²  c=(1-b)·4π/d
+   ============================================================ */
+class EEM {
+  constructor(){ this._ev = {}; }
+  on(ev, fn){ (this._ev[ev] = this._ev[ev] || []).push(fn); return this; }
+  once(ev, fn){ const wrap = (...a)=>{ this.off(ev, wrap); fn(...a); }; return this.on(ev, wrap); }
+  off(ev, fn){ const l = this._ev[ev]; if (l) this._ev[ev] = l.filter(f => f !== fn); }
+  trigger(ev, ...a){ (this._ev[ev] || []).forEach(fn => fn(...a)); }
+}
+
+const SpringRAF = {
+  springs: [], running: false, last: 0, lastTickAt: 0,
+  run(){
+    const now = performance.now();
+    /* 心跳看门狗：running 为 true 但超过 250ms 无帧（rAF 链因异常/标签页挂起死亡）
+       时重启帧链——否则弹簧会永远冻结在半途 */
+    if (this.running && now - this.lastTickAt < 250) return;
+    this.running = true;
+    this.last = now;
+    requestAnimationFrame(SpringRAF._tick);
+  },
+  _tick(now){
+    SpringRAF.lastTickAt = now;
+    const dt = (now - SpringRAF.last) / 1000;
+    SpringRAF.last = now;
+    const list = SpringRAF.springs.slice();
+    let anyUnsettled = false;
+    for (const s of list){
+      try { s._onUpdate(dt); } catch (e) { console.error('[SpringRAF update]', e); }
+    }
+    for (const s of list){
+      try { if (s._onDraw()) anyUnsettled = true; } catch (e) { console.error('[SpringRAF draw]', e); }
+    }
+    SpringRAF.running = false;
+    if (anyUnsettled) SpringRAF.run();
+  }
+};
+
+const DEFAULT_PROPS = {
+  height:{target:0,position:0,velocity:0,stiffness:200,damping:15},
+  width:{target:0,position:0,velocity:0,stiffness:200,damping:15},
+  x:{target:0,position:0,velocity:0,stiffness:200,damping:25},
+  y:{target:0,position:0,velocity:0,stiffness:200,damping:25},
+  scale:{target:1,position:1,velocity:0,stiffness:200,damping:20},
+  opacity:{target:1,position:1,velocity:0,stiffness:200,damping:10}
+};
+
+class SpringLayer extends EEM {
+  constructor(el, props = DEFAULT_PROPS){
+    super();
+    this.el = el;
+    this.props = JSON.parse(JSON.stringify(props));
+    this.dimensionProps = ['width','height'];
+    this.transformProps = ['x','y','z','scale','scale-x','scale-y'];
+    this.needsPositionUpdate = false;
+  }
+  mounted(){
+    for (const name in this.props){
+      const p = this.props[name];
+      p.velocity = 0;
+      if (p.bounce !== undefined && p.duration !== undefined){
+        p.mass = 1;
+        p.stiffness = Math.pow((2 * Math.PI) / p.duration, 2);
+        p.damping = (1 - p.bounce) * (4 * Math.PI) / p.duration;
+      }
+    }
+    this._initEnhanced();
+    SpringRAF.run();
+  }
+  addProp(name, conf){
+    this.props[name] = JSON.parse(JSON.stringify(conf));
+    this.previousState = JSON.parse(JSON.stringify(this.props));
+    this.renderState = JSON.parse(JSON.stringify(this.props));
+  }
+  set(name, field, value){
+    this.props[name][field] = value;
+    if ((field === 'bounce' || field === 'duration') &&
+        this.props[name].bounce !== undefined && this.props[name].duration !== undefined){
+      this.props[name].mass = 1;
+      this.props[name].stiffness = Math.pow((2 * Math.PI) / this.props[name].duration, 2);
+      this.props[name].damping = (1 - this.props[name].bounce) * (4 * Math.PI) / this.props[name].duration;
+    }
+    SpringRAF.run();
+  }
+  setTarget(name, value){
+    this.props[name].target = value;
+    this.needsPositionUpdate = true;
+    SpringRAF.run();
+  }
+  setImmediateValue(name, value = null){
+    if (value === null) value = this.renderState[name].position;
+    if (this.dimensionProps.includes(name)){
+      this.el.style[name] = `${value}px`;
+    } else if (this.transformProps.includes(name)){
+      const x = this.renderState.x ? this.renderState.x.position : 0;
+      const y = this.renderState.y ? this.renderState.y.position : 0;
+      const z = this.renderState.z ? this.renderState.z.position : 0;
+      const s = this.renderState.scale ? this.renderState.scale.position : 1;
+      const sx = this.renderState['scale-x'] ? this.renderState['scale-x'].position : 1;
+      const sy = this.renderState['scale-y'] ? this.renderState['scale-y'].position : 1;
+      this.el.style.transform = `translate3d(${x}px, ${y}px, ${z}px) scale(${s}) scaleX(${sx}) scaleY(${sy})`;
+    } else if (name.indexOf('--') > -1){
+      this.el.style.setProperty(name, `${value}`);
+    } else {
+      this.el.style[name] = `${value}`;
+    }
+  }
+  snapValue(name, value){
+    this.props[name].target = this.previousState[name].target = this.renderState[name].target = value;
+    this.props[name].position = this.previousState[name].position = this.renderState[name].position = value;
+    this.setImmediateValue(name, Number(value).toFixed(5));
+  }
+  destroy(){
+    const i = SpringRAF.springs.indexOf(this);
+    if (i > -1) SpringRAF.springs.splice(i, 1);
+    this.el = null; this.props = null;
+    return null;
+  }
+  _initEnhanced(){
+    this.frameTimeTarget = 1 / 60;
+    this.frameTimeAccumulator = 0;
+    this.previousState = JSON.parse(JSON.stringify(this.props));
+    this.renderState = JSON.parse(JSON.stringify(this.props));
+    SpringRAF.springs.push(this);
+    // 首帧立即写入初始值（与原实现 _onDraw 行为一致）
+    for (const name in this.props) this.setImmediateValue(name);
+  }
+  _isNear(name, eps){
+    const nearPos = Math.abs(this.renderState[name].position - this.props[name].target) < eps;
+    const nearVel = Math.abs(this.props[name].velocity) < eps;
+    return nearPos && nearVel;
+  }
+  _onUpdate(dt){
+    if (!this.props) return;                // 已销毁：跳过
+    this.frameTime = Math.min(1/30, Math.max(0, dt));   // dt 防负（时钟回退/挂起恢复）
+    if (this.frameTimeAccumulator < 0) this.frameTimeAccumulator = 0;  // 累加器防负，防永久冻结
+    this.frameTimeAccumulator += this.frameTime;
+    while (this.frameTimeAccumulator >= this.frameTimeTarget){
+      this.previousState = {};
+      for (const n in this.props){
+        this.previousState[n] = {};
+        for (const f in this.props[n]) this.previousState[n][f] = this.props[n][f];
+      }
+      for (const n in this.props){
+        if (this._isNear(n, 0.001)){
+          this.props[n].position = this.previousState[n].position = this.props[n].target;
+          this.props[n].velocity = this.previousState[n].velocity = 0;
+        } else {
+          const r = this._spring(1, this.props[n].stiffness, this.props[n].damping,
+                                 this.props[n].position, this.props[n].velocity, this.props[n].target);
+          this.props[n].velocity = r.newVelocity;
+          this.props[n].position = r.newPosition;
+        }
+      }
+      this.frameTimeAccumulator -= this.frameTimeTarget;
+    }
+    const a = this.frameTimeAccumulator / this.frameTimeTarget;
+    for (const n in this.props){
+      this.renderState[n].velocity = this.props[n].velocity * a + this.previousState[n].velocity * (1 - a);
+      this.renderState[n].position = this.props[n].position * a + this.previousState[n].position * (1 - a);
+    }
+  }
+  _spring(mass, stiffness, damping, position, velocity, target){
+    // 速度先积分（半隐式欧拉），再以新速度推进位移 —— 固定步长 1/60
+    const v = velocity += (-(stiffness * (position - target)) + -(damping * velocity)) / mass * this.frameTimeTarget;
+    const p = position += v * this.frameTimeTarget;
+    return { newPosition: p, newVelocity: v };
+  }
+  _onDraw(){
+    let allSettled = true;
+    if (!this.props) return false;          // 已销毁：跳过
+    for (const n in this.props){
+      if (this._isNear(n, 0.001)){
+        this.props[n].position = this.renderState[n].position = this.props[n].target;
+        this.props[n].velocity = this.renderState[n].velocity = 0;
+      } else {
+        allSettled = false;
+      }
+      if (this.el instanceof Element) this.setImmediateValue(n);
+    }
+    if (allSettled && this.needsPositionUpdate){
+      this.trigger('complete', this);
+      this.needsPositionUpdate = false;
+    }
+    return !allSettled;                     // 供 hub 判断是否续帧
+  }
+}
+
+/* ============================================================
+   2. 定时器编舞 —— addTween({duration, onStart/onComplete}) 等价实现
+      原实现里每个 tween 从 playIntroAnimation() 起各自计时；
+      返回取消句柄，重播前统一清掉尚未触发的回调
+   ============================================================ */
+function scheduleTimeline(steps, registry){
+  steps.forEach(([at, fn]) => registry.push(setTimeout(fn, at * 1000)));
+}
+
+/* ============================================================
+   3. AAP intro 控制器（MediaCardGalleryControl 逆向移植）
+   ============================================================ */
+class AapMediaCardGallery {
+  constructor(){
+    this.aap = document.getElementById('aap-media-card-gallery');
+    this.root = document.getElementById('highlights-gallery');   // media-card-set（playing/paused/ended 状态宿主）
+    this.section = document.getElementById('highlights');
+    this.galleryEl = this.root;
+    this.introEl = this.aap.querySelector('.all-access-pass__intro-element');
+    this.playPauseWrap = this.aap.querySelector('.play-pause-button-wrapper');
+    this.timedDotNav = this.aap.querySelector('.aap-media-card-gallery__timed-dotnav');
+    this.dotItems = Array.from(this.aap.querySelectorAll('.aap-media-card-gallery__dotnav-item'));
+    this.hasEntered = false;
+    this._timers = [];
+    this.bubbles = [
+      { element: this.timedDotNav,      background: this.timedDotNav.querySelector('.all-access-pass__background') },
+      { element: this.playPauseWrap,    background: this.playPauseWrap.querySelector('.all-access-pass__background') },
+    ];
+    this._createSpringLayers();
+  }
+  _createSpringLayers(){
+    // —— 基类弹簧层 ——
+    this.introElementSpring = new SpringLayer(this.introEl, {
+      x:      { position:-15, target:-15, velocity:0, stiffness:100, damping:8 },
+      scale:  { position:1.3, target:1.3, velocity:0, duration:0.5, bounce:0 },
+      height: { position:80,  target:80,  velocity:0, stiffness:100, damping:8 },
+      width:  { position:30,  target:30,  velocity:0, stiffness:100, damping:8 },
+    });
+    this.aapSpring = new SpringLayer(this.aap, {
+      y: { position:180, target:180, velocity:0, stiffness:100, damping:8 },
+    });
+    this.introElementSpring.mounted();
+    this.aapSpring.mounted();
+
+    // —— 子类（媒体卡片画廊）气泡弹簧层 ——
+    const b0 = this.bubbles[0], b1 = this.bubbles[1];
+    b0.elementSpring = new SpringLayer(b0.element, {
+      x: { position:0, target:0, velocity:0, stiffness:100, damping:20 },
+      '--alpha': { position:0, target:0, velocity:0, stiffness:100, damping:20 },
+      '--progress-intro': { position:1, target:1, velocity:0, stiffness:200, damping:20 },
+    });
+    b0.elementSpring.mounted();
+    b0.backgroundSpring = new SpringLayer(b0.background, {
+      height: { position:56, target:56, velocity:0, stiffness:100, damping:10 },
+      width:  { position:56, target:56, velocity:0, stiffness:100, damping:10 },
+      '--scale': { position:1.3, target:1.3, velocity:0, duration:0.3, bounce:0 },
+    });
+    b0.backgroundSpring.mounted();
+
+    b1.elementSpring = new SpringLayer(b1.element, {
+      x: { position:0, target:0, velocity:0, stiffness:100, damping:20 },
+      '--alpha': { position:0, target:0, velocity:0, stiffness:100, damping:20 },
+    });
+    b1.elementSpring.mounted();
+    b1.backgroundSpring = new SpringLayer(b1.background, {
+      height: { position:56, target:56, velocity:0, stiffness:100, damping:10 },
+      width:  { position:56, target:56, velocity:0, stiffness:100, damping:10 },
+      '--scale': { position:0, target:0, velocity:0, duration:0.65, bounce:0 },
+    });
+    b1.backgroundSpring.mounted();
+
+    this.dotNavSprings = this.dotItems.map(li => {
+      const s = new SpringLayer(li, {
+        x: { position:0, target:0, velocity:0, stiffness:200, damping:20 },
+      });
+      s.mounted();
+      return s;
+    });
+  }
+  _measureBounds(){
+    this.bubbles.forEach(b => b.bounds = b.element.getBoundingClientRect().toJSON());
+  }
+  /* 定位专用测量：在 --progress-intro=0（dotnav 收起）状态下进行，
+     使两气泡的 x-snap 补偿值与收缩后的真实布局一致 → snap 后严格同心。
+     （原站在收缩前测量，飞行初期两气泡天然带 ~20-25px 横向偏差，此处按需求修正） */
+  _destroySprings(){
+    const kill = s => { if (s && s.props) s.destroy(); };
+    kill(this.introElementSpring);
+    kill(this.aapSpring);
+    this.bubbles.forEach(b => { kill(b.elementSpring); kill(b.backgroundSpring); });
+    (this.dotNavSprings || []).forEach(kill);
+    this.introElementSpring = this.aapSpring = null;
+    this.bubbles.forEach(b => { b.elementSpring = b.backgroundSpring = null; });
+    this.dotNavSprings = [];
+  }
+  /* 每次进入版块都重播：清掉上一轮的计时器/弹簧/内联样式，再从头编舞 */
+  _teardown(){
+    this._timers.forEach(clearTimeout);
+    this._timers = [];
+    this._destroySprings();
+    const [b0, b1] = this.bubbles;
+    this.bubbles.forEach(b => {
+      b.element.style.transform = '';
+      b.element.style.setProperty('--alpha', 0);
+      b.background.style.width = '';
+      b.background.style.height = '';
+      b.background.style.setProperty('--scale', b === b0 ? 1.3 : 0);
+    });
+    this.introEl.style.cssText = '';
+    this.dotItems.forEach(li => {
+      li.style.transform = '';
+      li.style.setProperty('--item-index', li.style.getPropertyValue('--item-index'));
+    });
+    this.aap.classList.remove('activated', 'aap-intro-complete');
+  }
+  _onEnter(){
+    this._teardown();
+    this._createSpringLayers();
+    this._measureBounds();        // 展开态尺寸 → 气泡背景弹簧的最终目标
+    this.playIntroAnimation();
+    this.aap.classList.remove('inactive');
+    this.hasEntered = true;
+  }
+  playIntroAnimation(){
+    const [b0, b1] = this.bubbles;
+
+    /* —— 子类前置 snap —— */
+    b0.elementSpring.snapValue('--progress-intro', 0);
+    this.dotNavSprings.forEach((s, i) => {
+      s.snapValue('x', 36);
+      s.once('complete', () => {
+        s.destroy();
+        this.dotItems[i].style.setProperty('--item-index', i);
+      });
+    });
+
+    /* —— 基类 playIntroAnimation 的 snap —— */
+    this.introEl.style.display = 'block';
+    this.introEl.style.opacity = '0';
+    this.introElementSpring.snapValue('scale', 1.3);
+    this.introElementSpring.snapValue('x', -15);
+    this.introElementSpring.snapValue('width', 30);
+    this.introElementSpring.snapValue('height', 80);
+    this.aapSpring.snapValue('y', 180);
+    this.aapSpring.once('complete', s => s.destroy());   // 与原站一致：落定即销毁
+    this.aap.classList.remove('activated');
+
+    this.bubbles.forEach((b, i) => {
+      b.elementSpring.snapValue('x',
+        0.5 * document.documentElement.clientWidth - 0.5 * b.bounds.width - b.bounds.x);
+      b.elementSpring.snapValue('--alpha', 0);
+      b.backgroundSpring.snapValue('width', 0 === i ? 40 : 80);
+      b.backgroundSpring.snapValue('height', 36);
+      b.backgroundSpring.snapValue('--scale', 0 === i ? 1.3 : 0);
+      b.backgroundSpring.once('complete', spring => {
+        spring.destroy();
+        b.background.style.width  = `${b.bounds.width}px`;
+        b.background.style.height = `${b.bounds.height}px`;
+        this.aap.classList.add('aap-intro-complete');
+      });
+      b.elementSpring.once('complete', spring => spring.destroy());
+    });
+
+    /* —— 编舞时间线（秒）：addTween duration 即触发延迟 —— */
+    scheduleTimeline([
+      [0.02, () => {        requestAnimationFrame(() => {
+          this.aap.classList.add('activated');
+          this.introEl.style.display = 'block';
+          this.introEl.style.opacity = '1';
+        });
+        this.introElementSpring.setTarget('scale', 0.8);
+      }],
+      [0.03, () => this.aapSpring.setTarget('y', 0)],
+      [0.05, () => {
+        this.introElementSpring.setTarget('x', -28);
+        this.introElementSpring.setTarget('width', 56);
+      }],
+      [0.15, () => this.introElementSpring.setTarget('height', 56)],
+      // —— 双气泡分支 ——
+      [0.30, () => b0.backgroundSpring.setTarget('--scale', 1)],
+      [0.50, () => {
+        b0.elementSpring.setTarget('x', 0);
+        b0.backgroundSpring.setTarget('width', b0.bounds.width);
+      }],
+      [0.52, () => {
+        requestAnimationFrame(() => {
+          this.introEl.style.opacity = '0';
+          this.introElementSpring.destroy();
+          this.introEl.style.display = 'none';
+        });
+      }],
+      [0.54, () => {
+        b1.elementSpring.setTarget('x', 0);
+        b1.backgroundSpring.setTarget('--scale', 1);
+      }],
+      [0.70, () => {
+        b0.backgroundSpring.setTarget('height', b0.bounds.height);
+        b1.backgroundSpring.setTarget('width', b1.bounds.width);
+        b1.backgroundSpring.setTarget('height', b1.bounds.height);
+      }],
+      [1.00, () => {
+        this.bubbles.forEach(b => b.elementSpring.setTarget('--alpha', 1));
+      }],
+    ], this._timers);
+
+    /* —— 子类：dotnav 圆点 0.74s 起步进 20ms 依次弹入，
+          第 0 个触发 --progress-intro 0→1（进度条容器展开） —— */
+    this.dotNavSprings.forEach((s, i) => {
+      scheduleTimeline([[0.74 + 0.02 * i, () => {
+        if (0 === i) b0.elementSpring.setTarget('--progress-intro', 1);
+        s.setTarget('x', 0);
+      }]], this._timers);
+    });
+  }
+}
+
+/* ============================================================
+   4. 画廊 + 自动播放（TimeGroup / animateWithAnim 移植）
+      · 每张卡片停留 6.15s（--autoplay-persist-duration）
+      · 切换 = scrollLeft 关键帧 1s easeInOutQuad（--shared-media-gallery-transition-duration）
+      · ITEM_CHANGE_OCCURRED 在滑动中点触发（圆点 current 切换 + 时间轴 seek）
+      · --autoplay-progress = round(scrollLeft)/unitOffset（驱动圆点宽度形变）
+   ============================================================ */
+const easeInOutQuad = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+class MediaCardGallery {
+  constructor(){
+    this.scroller = document.getElementById('mcg-scroller');
+    this.items = Array.from(document.querySelectorAll('.gallery-item'));
+    this.dotLinks = Array.from(document.querySelectorAll('#mcg-dotnav .dotnav-link'));
+    this.dotItems = Array.from(document.querySelectorAll('#mcg-dotnav .dotnav-item'));
+    this.root = document.getElementById('highlights-gallery');
+    this.persist = parseFloat(getComputedStyle(this.root).getPropertyValue('--autoplay-persist-duration')) || 6.15;
+    this.duration = parseFloat(getComputedStyle(this.root).getPropertyValue('--shared-media-gallery-transition-duration')) || 1;
+    this.currentIndex = 0;
+    this.lastInteractionEvent = null;
+    this.AUTOPLAY_INTERACTION = 'auto';
+    this.playing = false;
+    this.userPaused = false;
+    this.ended = false;
+    this.time = 0;                       // TimeGroup 时钟（秒）
+    this.timeouts = this.items.map((_, i) => ({ at: (i + 1) * this.persist, fired: false }));
+    this.totalDuration = this.items.length * this.persist;
+    this._raf = null;
+    this._lastTick = 0;
+    this._animating = null;
+
+    this._setOffsets();
+    this._bindEvents();
+  }
+  _setOffsets(){
+    this.itemOffsets = this.items.map(li => li.offsetLeft - this.scroller.offsetLeft
+      - (parseFloat(getComputedStyle(this.scroller.querySelector('.item-container')).paddingLeft) || 0));
+    this._singleOffset = this.itemOffsets[1];
+    this._finalIndex = this.items.length - 1;
+    this._finalOffset = this.itemOffsets[this._finalIndex];
+    this._penultimateOffset = this.itemOffsets[this._finalIndex - 1];
+    this._finalRange = this._finalOffset - this._penultimateOffset;
+  }
+  _bindEvents(){
+    this.scroller.addEventListener('scroll', () => this._updateProgressVar());
+    document.getElementById('mcg-play-pause').addEventListener('click', () => {
+      this.playing ? this.pause({user:true}) : this.play();
+    });
+    this.dotLinks.forEach((link, i) => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        this._onDotnavItemClick(i);
+      });
+    });
+    // 键盘焦点暂停（原站行为：dotnav 获得焦点时暂停自动播放）
+    this.dotLinks.forEach(link => link.addEventListener('focus', () => {
+      if (this.playing) this.pause();
+    }));
+  }
+  _updateProgressVar(){
+    const e = this.scroller.scrollLeft;
+    const t = (e > this._penultimateOffset)
+      ? this._finalIndex - Math.round(this._finalOffset - e) / Math.round(this._finalRange)
+      : Math.round(e) / this._singleOffset;
+    this.root.style.setProperty('--autoplay-progress', t);
+  }
+  _setCurrent(idx){
+    this.currentIndex = idx;
+    this.items.forEach((li, i) => li.classList.toggle('current', i === idx));
+    this.dotItems.forEach((li, i) => li.classList.toggle('current', i === idx));
+    this.dotLinks.forEach((a, i) => a.classList.toggle('current', i === idx));
+  }
+  _onDotnavItemClick(i){
+    if (i === this.currentIndex) return;
+    /* 用户接管：立即暂停时钟（原站中点暂停的净效果，但消除滑动途中点击的竞态窗口） */
+    if (this.playing) this.pause({user:false});
+    if (this.ended) { this.ended = false; this.root.classList.remove('ended'); }
+    this.time = i * this.persist;                     // TimeGroup seek
+    this.timeouts.forEach((to, k) => { to.fired = to.at <= this.time; });
+    this.lastInteractionEvent = { type: 'user' };
+    this.animateToItem(i);
+  }
+  animateToItem(idx){
+    if (idx === this.currentIndex) return;
+    if (idx > this._finalIndex) idx = this._finalIndex;
+    const from = this.scroller.scrollLeft;
+    const to = this.itemOffsets[idx];
+    if (this._animating){                             // 取消在途滑动：清帧 + 清状态类
+      cancelAnimationFrame(this._animating);
+      this._animating = null;
+      this.root.classList.remove('animating');
+    }
+    this.root.classList.add('animating');
+    this.scroller.style.scrollSnapType = 'none';       // 事件 @0
+    const dur = this.duration * 1000;
+    const t0 = performance.now();
+    let occurred = false;
+    const step = now => {
+      const p = Math.min(1, (now - t0) / dur);
+      this.scroller.scrollLeft = from + (to - from) * easeInOutQuad(p);
+      if (!occurred && p >= 0.5){                      // 事件 @duration/2
+        occurred = true;
+        this._setCurrent(idx);
+        this.time = idx * this.persist;                // TimeGroup seek（同值）
+        this.timeouts.forEach(to => { to.fired = to.at <= this.time; });
+        this._updateProgressVar();
+        if (this.lastInteractionEvent && this.lastInteractionEvent.type !== this.AUTOPLAY_INTERACTION){
+          this.pause({user:false});                    // 用户交互后停住自动播放
+        }
+      }
+      if (p < 1){
+        this._animating = requestAnimationFrame(step);
+      } else {                                         // 事件 @duration
+        this.scroller.style.scrollSnapType = 'x mandatory';
+        this._animating = null;
+        this.root.classList.remove('animating');
+      }
+    };
+    this._animating = requestAnimationFrame(step);
+  }
+  /* —— TimeGroup —— */
+  _tick(now){
+    if (this.playing){
+      const dt = Math.min(0.25, (now - this._lastTick) / 1000);
+      this.time += dt;
+      this._lastTick = now;                    // 每帧必须推进，否则 dt 恒为上限 → 时钟倍速狂奔
+      this.timeouts.forEach(to => {
+        if (!to.fired && this.time >= to.at){
+          to.fired = true;
+          this._onTimeout(to);
+        }
+      });
+      if (this.time >= this.totalDuration) this._onComplete();
+      this._raf = requestAnimationFrame(n => this._tick(n));   // 播放中才续帧
+    } else {
+      this._raf = null;                                        // 暂停/结束：让出 rAF
+    }
+  }
+  _onTimeout(to){
+    const i = this.timeouts.indexOf(to);
+    if (this.currentIndex === i && this.currentIndex < this._finalIndex){
+      this.lastInteractionEvent = { type: this.AUTOPLAY_INTERACTION };
+      this.animateToItem(i + 1);
+    }
+  }
+  _onComplete(){
+    this.playing = false;
+    this.ended = true;
+    this.root.classList.add('ended');
+    this.root.classList.remove('playing','paused');
+  }
+  play(){
+    crumb('play()');
+    this.userPaused = false;
+    this.playing = true;
+    if (this.ended) this.reset();
+    this.root.classList.add('playing');
+    this.root.classList.remove('paused','ended');
+    this._lastTick = performance.now();
+    if (!this._raf) this._raf = requestAnimationFrame(n => this._tick(n));
+  }
+  pause({user} = {}){
+    crumb('pause(' + (user ? 'user' : 'exit') + ')');
+    this.playing = false;
+    if (user) this.userPaused = true;
+    this.root.classList.add('paused');
+    this.root.classList.remove('playing');
+  }
+  reset(){
+    this.ended = false;
+    this.time = 0;
+    this.timeouts.forEach(to => to.fired = false);
+    this.lastInteractionEvent = { type: this.AUTOPLAY_INTERACTION };
+    // 与原站一致：只翻转圆点/链接的 current 类，不动 currentIndex ——
+    // 若先 _setCurrent(0)，animateToItem(0) 会被 idx===currentIndex 早退挡掉，
+    // scrollLeft 停在末张、--autoplay-progress 停在 5（首点不展开的 bug 根因）
+    this.dotItems.forEach((li, i) => li.classList.toggle('current', i === 0));
+    this.dotLinks.forEach((a, i) => a.classList.toggle('current', i === 0));
+    this.animateToItem(0);   // currentIndex 仍是末张 → 真正执行回卷；中点事件再同步 _setCurrent(0)
+  }
+}
+
+/* ============================================================
+   5. 滚动关键帧 —— data-aap-kf 表达式语义（已用页面内 ExpressionParser 验证）
+      start = a0t - 100vh + 60a0h   （"60a0h" = 60% × a0 高度）
+      end   = a1b - 75vh
+      a0 = [data-media-card-gallery]（画廊容器） a1 = 所属 section
+   ============================================================ */
+class ScrollKeyframe {
+  constructor(){
+    this.aap = new AapMediaCardGallery();
+    this.gallery = new MediaCardGallery();
+    // 回调在实例构造完成后再挂载（避免构造期首评触发 TDZ）
+    this.onEnter = () => {};
+    this.onExit = () => {};
+    this.inRange = false;
+    this._calc();
+    this._onScroll = this._onScroll.bind(this);
+    window.addEventListener('scroll', this._onScroll, { passive: true });
+    window.addEventListener('resize', () => { this._calc(); this.gallery._setOffsets(); this._onScroll(); });
+    // 注意：不在构造期评估进入——回调尚未挂载；由启动代码在挂载后统一补一次
+  }
+  _calc(){
+    const vh = window.innerHeight;
+    const gTop = this.gallery.root.getBoundingClientRect().top + window.scrollY;
+    const gH = this.gallery.root.offsetHeight;
+    const sBottom = this.aap.section.getBoundingClientRect().bottom + window.scrollY;
+    this.start = gTop - vh + 0.6 * gH;
+    this.end = sBottom - 0.75 * vh;
+  }
+  _onScroll(){
+    this._calc();   // 图片懒加载会改变版块高度，逐次重算（原站由 anim-metrics 系统处理）
+    const y = window.scrollY;
+    const should = y >= this.start && y <= this.end;
+    if (should && !this.inRange){
+      this.inRange = true;
+      this.aap._onEnter();
+      this.onEnter();
+    } else if (!should && this.inRange){
+      this.inRange = false;
+      this.onExit();
+    }
+  }
+}
+
+/* ---- 启动 ---- */
+const dbg = [];
+function crumb(msg){
+  dbg.push(`${Math.round(performance.now())}ms ${msg}`);
+  if (dbg.length > 12) dbg.shift();
+  document.documentElement.dataset.dbg = dbg.join(' || ');
+}
+const kf = new ScrollKeyframe();
+kf.onEnter = () => {
+  crumb('kf-enter');
+  if (!kf.gallery.ended && !kf.gallery.userPaused && !matchMedia('(prefers-reduced-motion: reduce)').matches) kf.gallery.play();
+};
+kf.onExit = () => { crumb('kf-exit'); kf.gallery.pause(); };
+kf._onScroll();   // 挂载完回调后再补一次初始评估
+window.__mcg = kf;   // 调试钩子
+/* 图片异步加载会改变版块高度，加载完成后重算触发阈值 */
+window.addEventListener('load', () => { kf._calc(); kf._onScroll(); });
+/* 按 R 键手动重播 intro（与每次进入版块的重播走同一条路径） */
+window.addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) kf.aap._onEnter();
+});
+</script>
+</body>
+</html>

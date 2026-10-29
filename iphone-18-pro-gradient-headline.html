@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="enhanced">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPhone 18 Pro — 渐变大标题出场动画复刻（text-gradient / gradient-swipe）</title>
+<style>
+/* ============================================================
+   复刻自 https://www.apple.com.cn/iphone-18-pro/
+   组件 XPath: /html/body/main/section[5]/div[1]/div/div[2]/div/p/span
+   类名: .ric-type-lockup-element.typography-ric-type-lockup-xxl-headline
+         .ric-type-lockup-headline.text-animated.text-gradient
+   触发: AnimateHeadline 组件 → scrollKeyframe(start:"a0t - 80vh", cssClass:"animate")
+   动画: gradient-swipe 3.5s linear —— background-position-x 160%→1%，
+         一条 300% 宽的 oklch 渐变从文字左侧扫到右侧
+   ============================================================ */
+
+*{ margin:0; padding:0; box-sizing:border-box; }
+html{ scroll-behavior:auto; }
+body{
+  background:#000; color:#f5f5f7;
+  font-family:"SF Pro SC","SF Pro Display","PingFang SC","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- 页面骨架 ---------- */
+.hero{ height:170vh; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:18px; }
+.hero h1{ font-size:56px; font-weight:700; }
+.hero p{ font-size:22px; color:#86868b; }
+.hero .hint{ position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  font-size:13px; color:#6e6e73; z-index:9; }
+
+/* ---------- 性能版块（theme-dark，对应原 section#performance） ---------- */
+.section{ padding:224px 0; position:relative; background:#000; overflow:hidden; }
+.media-type-layout{ position:relative; }
+.media-type-layout-content{
+  max-width:1080px; margin:0 auto; padding:0 22px;
+  display:flex; flex-direction:column; align-items:flex-start; gap:28px;
+}
+.ric-type-lockup-eyebrow{
+  font-size:21px; line-height:1; font-weight:600; letter-spacing:.011em; color:#f5f5f7;
+  display:inline-block;
+}
+.ric-type-lockup-headline-container{ display:block; }
+.ric-copy{ font-size:17px; line-height:1.47; color:#a1a1a6; max-width:640px; }
+
+/* ============================================================
+   核心：渐变标题（CSS 逐字取自原站 overview.built.css）
+   ============================================================ */
+.ric-type-lockup-headline{
+  font-size:96px; line-height:1.0416666667; font-weight:600;
+  letter-spacing:-0.015em;
+}
+:lang(zh) .ric-type-lockup-headline, html[lang=zh-CN] .ric-type-lockup-headline{ letter-spacing:0em; }
+@media (max-width:1068px){ .ric-type-lockup-headline{ font-size:72px; } }
+@media (max-width:734px){ .ric-type-lockup-headline{ font-size:48px; } }
+
+.text-gradient.text-animated{
+  --start-color:rgb(0 0 0/0.67);   /* .background-alt 下为 var(--global-section-background-color-alt-dark) */
+  color:rgba(0,0,0,0);
+  -webkit-text-fill-color:rgba(0,0,0,0);            /* 原站用 color:transparent；补 text-fill 增强 Safari 兼容 */
+  -webkit-background-clip:text;
+  background-clip:text;
+  background-image:linear-gradient(270deg in oklch,
+    var(--start-color) 0%,          /* 黑（渐变最右端，率先从文字左缘入场） */
+    rgba(44,58,110,0.76) 7%,        /* 深蓝 */
+    #b5d4eb 18%,                    /* 浅蓝 */
+    #729fc5 32%,                    /* 中蓝 */
+    #c6f3ea 45%,                    /* 青 */
+    #e0f4ec 62%,                    /* 淡青绿 */
+    #fff 73%,
+    #fff 99%,
+    transparent);                   /* 渐变最左端 */
+  padding-bottom:.05em; margin-bottom:-0.05em;      /* 防止 descender 被裁 */
+  display:inline-block;
+  background-color:rgba(0,0,0,0);
+  background-position-x:160%;                       /* 初始：渐变整体位于文字左侧 → 文字不可见 */
+  background-size:300% 100%;
+  background-repeat:no-repeat;
+  animation-duration:3.5s;
+  animation-iteration-count:1;
+  animation-timing-function:linear;
+  animation-fill-mode:forwards;
+}
+.text-gradient.text-animated.animate{ animation-name:gradient-swipe; }
+@keyframes gradient-swipe{
+  0%{ background-position-x:160% }
+  100%{ background-position-x:1% }
+}
+/* 无增强/降级：直接呈最终态 */
+html.no-enhanced .text-gradient.text-animated{ background-position-x:1%; animation-duration:0s; }
+
+/* ---------- 视觉辅助：底部放一段占位视频区模拟原版块 ---------- */
+.placeholder-video{
+  margin-top:80px; width:100%; aspect-ratio:1440/708; border-radius:28px;
+  background:radial-gradient(120% 100% at 50% 0%, #101013 0%, #000 70%);
+  display:flex; align-items:center; justify-content:center; color:#3a3a3c; font-size:14px;
+}
+
+.after{ height:120vh; display:flex; align-items:center; justify-content:center; color:#6e6e73; font-size:20px; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>iPhone&nbsp;18&nbsp;Pro</h1>
+  <p>2 纳米芯，强悍出征。</p>
+  <div class="hint">向下滚动 — 标题顶部越过视口 80% 线时触发渐变扫过（滚回上方再进入可重播）</div>
+</div>
+
+<section id="performance" class="section theme-dark">
+  <div class="media-type-layout">
+    <div class="media-type-layout-content">
+      <h2 class="ric-type-lockup-eyebrow-container">
+        <span class="ric-type-lockup-element ric-type-lockup-eyebrow" data-staggered-item>性能</span>
+      </h2>
+      <p class="ric-type-lockup-element ric-type-lockup-headline-container">
+        <span id="gradient-headline"
+              class="ric-type-lockup-element typography-ric-type-lockup-xxl-headline ric-type-lockup-headline text-animated text-gradient"
+              data-staggered-item>2 纳米芯旗舰，<br>强悍出征。</span>
+      </p>
+      <div class="ric-copy">
+        <p>A20&nbsp;Pro 采用 2 纳米制程，其封装方式借鉴了我们的 M&nbsp;系列芯片，性能和能效均创 iPhone&nbsp;新高。
+           拥有 7 核图形处理器，图像表现更出色，配合新一代 VC&nbsp;均热板，持续输出 Pro&nbsp;级性能表现。</p>
+      </div>
+      <div class="placeholder-video">（原版此处为背景视频）</div>
+    </div>
+  </div>
+</section>
+
+<div class="after">后续页面内容…</div>
+
+<script>
+/* ============================================================
+   触发器 —— 原站 AnimateHeadline 组件（模块 c77c477552a00b91881f）：
+     this.enhancedScrollGroup.addKeyframe(this.textEl, {
+       anchors: [this.el],
+       start: "a0t - 80vh",     // 标题顶部 − 80vh（标题顶越过视口 80% 高度线）
+       cssClass: "animate"      // 进入范围加类，离开移除 → 动画随 .animate 启停
+     })
+   语义等价实现：rect.top <= 0.8·innerHeight ⇔ scrollY >= a0.top − 80vh
+   ============================================================ */
+(function(){
+  const el = document.getElementById('gradient-headline');
+  const LINE = () => window.innerHeight * 0.8;
+  let inRange = false;
+  function evaluate(){
+    const top = el.getBoundingClientRect().top;
+    const should = top <= LINE();
+    if (should !== inRange){
+      inRange = should;
+      // 加 .animate → animation-name 从 none 变 gradient-swipe → 动画启动；
+      // 移除后再次加入会重新从头播放（重播能力）
+      el.classList.toggle('animate', should);
+    }
+  }
+  window.addEventListener('scroll', evaluate, { passive: true });
+  window.addEventListener('resize', evaluate);
+  document.addEventListener('DOMContentLoaded', evaluate);
+  evaluate();
+  // 按 R 重播（调试便利）
+  window.addEventListener('keydown', e => {
+    if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey){
+      el.classList.remove('animate');
+      void el.offsetWidth;               // 强制回流，确保重新触发
+      el.classList.add('animate');
+    }
+  });
+})();
+</script>
+</body>
+</html>
